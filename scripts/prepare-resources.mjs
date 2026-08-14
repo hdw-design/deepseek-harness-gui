@@ -14,7 +14,7 @@
  *   NODEJS_MIRROR  e.g. https://npmmirror.com/mirrors/node/
  *   NPM_REGISTRY   e.g. https://registry.npmmirror.com
  */
-import { createWriteStream, existsSync, mkdirSync, rmSync, renameSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, rmSync, renameSync, writeFileSync, readdirSync, unlinkSync, rmdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import https from 'node:https';
@@ -57,6 +57,46 @@ function npm(args, cwd) {
   if (r.status !== 0) throw new Error(`npm ${args.join(' ')} failed with code ${r.status}`);
 }
 
+// npm dependency trees ship a lot of files that are useless at runtime
+// (readmes, source maps, TypeScript sources/types, test & doc folders).
+// They make up over half of the file count and are the main reason the
+// NSIS installer takes minutes to extract. LICENSE/COPYING files are
+// kept on purpose (license compliance when redistributing).
+const PRUNE_FILE_RE = /\.(md|markdown|map|ts|d\.ts|coffee)$/i;
+const PRUNE_NAME_RE = /^(changelog|changes|history|authors|contributors|notice|todo|news)(\.|$)/i;
+// NOTE: only clearly-safe directory names are pruned — e.g. the "yaml"
+// package keeps runtime code in dist/doc/, so "doc"/"docs"/"examples"
+// must NOT be deleted.
+const PRUNE_DIR_RE = /^(test|tests|__tests__|\.github|\.vscode|coverage|benchmark|benchmarks)$/i;
+
+function pruneNodeModules(dir) {
+  let removed = 0;
+  const walk = (d) => {
+    for (const entry of readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        if (PRUNE_DIR_RE.test(entry.name)) {
+          rmSync(p, { recursive: true, force: true });
+          removed++;
+          continue;
+        }
+        walk(p);
+        // drop directories left empty by pruning
+        try { if (readdirSync(p).length === 0) rmdirSync(p); } catch {}
+      } else if (entry.isFile()) {
+        // keep package.json / LICENSE-like files; prune the rest by pattern
+        if (entry.name === 'package.json') continue;
+        if (/^(licen[cs]e|copying)(\.|$)/i.test(entry.name)) continue;
+        if (PRUNE_FILE_RE.test(entry.name) || PRUNE_NAME_RE.test(entry.name)) {
+          try { unlinkSync(p); removed++; } catch {}
+        }
+      }
+    }
+  };
+  walk(dir);
+  console.log(`pruned ${removed} runtime-useless files/dirs from dsh node_modules`);
+}
+
 async function main() {
   mkdirSync(RES, { recursive: true });
 
@@ -87,12 +127,13 @@ async function main() {
   mkdirSync(dshDir, { recursive: true });
   npm(['install', '--prefix', dshDir, '--omit=dev', DSH_PACKAGE], ROOT);
   console.log(`${DSH_PACKAGE} -> resources/dsh/`);
+  pruneNodeModules(path.join(dshDir, 'node_modules'));
 
   // 3. pnpm (core package + shims that run it with the bundled node)
   const pnpmDir = path.join(RES, 'pnpm');
   const pnpmCore = path.join(pnpmDir, 'pnpm-core');
   rmSync(pnpmDir, { recursive: true, force: true });
-  mkdirSync(pnpmCore, { recursive: true });
+  mkdirSync(pnpmDir, { recursive: true });
   npm(['install', '--prefix', pnpmDir, '--omit=dev', 'pnpm'], ROOT);
   renameSync(path.join(pnpmDir, 'node_modules', 'pnpm'), pnpmCore);
   rmSync(path.join(pnpmDir, 'node_modules'), { recursive: true, force: true });
