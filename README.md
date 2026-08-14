@@ -9,13 +9,16 @@
 - 与命令行版共享数据：模型配置、会话记录都在 `~/.dsh`，两边互通
 - 已在运行的 dsh 实例会被直接复用，不重复启动
 - 关闭窗口自动清理后台进程；单实例运行
+- 自动更新：安装版启动时检查 GitHub Releases，发现新版本自动下载，提示重启更新（便携版无此功能）
+
+版本号跟随上游 `@deepseek-ai/dsh`（当前 `0.1.0-rc.6`）。
 
 ## 下载
 
 见 [Releases](https://github.com/hdw-design/deepseek-harness-gui/releases)：
 
-- `DeepSeek Harness GUI Setup x.y.z.exe` — 安装版
-- `DeepSeekHarnessGUI-portable.exe` — 绿色便携版，双击即用
+- `DeepSeek-Harness-GUI-Setup-x.y.z.exe` — 安装版（支持自动更新）
+- `DeepSeekHarnessGUI-portable.exe` — 绿色便携版，双击即用（无自动更新）
 
 ## 从源码构建
 
@@ -41,9 +44,26 @@ export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-b
 npm run prepare
 ```
 
-## 同步 dsh 新版本
+## 同步 dsh 新版本（发版流程）
 
-DeepSeek 官方更新 harness 后，重新执行 `npm run prepare`（会拉取最新 `@deepseek-ai/dsh`），然后 `npm run dist` 重新打包即可。
+版本号始终与上游 `@deepseek-ai/dsh` 保持一致。官方发布新版后：
+
+```bash
+# 1. 把 package.json 的 version 改成 dsh 的新版本号（如 0.1.0-rc.7）
+# 2. 拉取新版 dsh 并重新组装 resources/
+npm run prepare
+# 3. 打包
+npm run dist
+```
+
+然后在 GitHub 上新建 Release（tag 用版本号，如 `0.1.0-rc.7`），上传 `release/` 目录下这些文件：
+
+- `DeepSeek-Harness-GUI-Setup-x.y.z.exe`（安装版）
+- `DeepSeek-Harness-GUI-Setup-x.y.z.exe.blockmap`
+- `DeepSeekHarnessGUI-portable.exe`（便携版）
+- **`latest.yml`**（自动更新清单，必须上传，否则客户端检测不到更新）
+
+已安装的旧版本下次启动时会自动检测到新 Release 并提示更新。
 
 ## 工作原理
 

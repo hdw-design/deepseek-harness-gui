@@ -1,6 +1,6 @@
 {
   "name": "deepseek-harness-gui",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.6",
   "description": "Desktop app for DeepSeek Harness (dsh) — Electron wrapper around `dsh web` with all runtimes bundled",
   "main": "main.js",
   "author": "hdw-design",
@@ -21,6 +21,14 @@
   "build": {
     "appId": "com.github.hdwdesign.deepseekharnessgui",
     "productName": "DeepSeek Harness GUI",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "hdw-design",
+        "repo": "deepseek-harness-gui",
+        "channel": "latest"
+      }
+    ],
     "directories": {
       "output": "release"
     },
@@ -53,10 +61,14 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "DeepSeek Harness GUI"
+      "shortcutName": "DeepSeek Harness GUI",
+      "artifactName": "DeepSeek-Harness-GUI-Setup-${version}.${ext}"
     },
     "portable": {
       "artifactName": "DeepSeekHarnessGUI-portable.exe"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

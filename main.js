@@ -110,6 +110,69 @@ function showError(message) {
   mainWindow.loadFile(errPage, { query: { msg: message, log: logFile } });
 }
 
+// --- auto update (GitHub Releases, NSIS installs only) ---
+function setupAutoUpdater() {
+  if (!app.isPackaged) {
+    _diag('auto-updater skipped (dev mode)');
+    return;
+  }
+  if (process.env.PORTABLE_EXECUTABLE_FILE) {
+    _diag('auto-updater skipped (portable build)');
+    return;
+  }
+  let autoUpdater;
+  try {
+    autoUpdater = require('electron-updater').autoUpdater;
+  } catch (e) {
+    _diag(`auto-updater unavailable: ${e.message}`);
+    return;
+  }
+  // Our version tracks the upstream dsh version (e.g. 0.1.0-rc.6), so
+  // prerelease releases must be considered, and the channel is pinned to
+  // "latest" to match the publish.channel in package.json (latest.yml).
+  autoUpdater.channel = 'latest';
+  autoUpdater.allowPrerelease = true;
+  autoUpdater.autoDownload = true;
+  autoUpdater.logger = {
+    info: (m) => _diag(`[updater] ${m}`),
+    warn: (m) => _diag(`[updater][warn] ${m}`),
+    error: (m) => _diag(`[updater][error] ${m}`),
+    debug: () => {},
+  };
+
+  autoUpdater.on('update-available', (info) => {
+    _diag(`[updater] update available: ${info.version}`);
+  });
+  autoUpdater.on('update-not-available', () => {
+    _diag('[updater] already up to date');
+  });
+  autoUpdater.on('error', (e) => {
+    _diag(`[updater] error: ${e && e.message || e}`);
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    _diag(`[updater] downloaded: ${info.version}`);
+    if (!mainWindow) return;
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: '发现新版本',
+      message: `新版本 ${info.version} 已下载完成`,
+      detail: '重启应用以完成更新（dsh 服务会随应用一起重启）。',
+      buttons: ['立即重启更新', '稍后'],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response === 0) {
+        quitting = true;
+        killDsh();
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.checkForUpdates().catch((e) => _diag(`[updater] check failed: ${e.message}`));
+}
+// --- end auto update ---
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -180,6 +243,8 @@ if (!gotLock) {
   app.whenReady().then(() => {
     _diag('app ready, creating window');
     return createWindow();
+  }).then(() => {
+    setupAutoUpdater();
   }).catch((e) => _diag(`createWindow failed: ${e.stack}`));
 
   app.on('window-all-closed', () => {
