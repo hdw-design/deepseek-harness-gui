@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>DeepSeek Harness - 启动失败</title>
+  <style>
+    body {
+      margin: 0; height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #0d1117; color: #c9d1d9;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    h1 { font-size: 20px; color: #f85149; margin-bottom: 12px; }
+    .box {
+      max-width: 640px; padding: 16px 20px; background: #161b22;
+      border: 1px solid #30363d; border-radius: 8px; font-size: 13px;
+      word-break: break-all; white-space: pre-wrap;
+    }
+    p { color: #8b949e; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>dsh 服务启动失败</h1>
+  <div class="box" id="msg"></div>
+  <p id="logpath"></p>
+  <script>
+    const q = new URLSearchParams(location.search);
+    document.getElementById('msg').textContent = q.get('msg') || '未知错误';
+    document.getElementById('logpath').textContent = '日志文件：' + (q.get('log') || '');
+  </script>
+</body>
+</html>

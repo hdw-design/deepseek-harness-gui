@@ -1,0 +1,62 @@
+{
+  "name": "deepseek-harness-gui",
+  "version": "0.1.0",
+  "description": "Desktop app for DeepSeek Harness (dsh) — Electron wrapper around `dsh web` with all runtimes bundled",
+  "main": "main.js",
+  "author": "hdw-design",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hdw-design/deepseek-harness-gui.git"
+  },
+  "scripts": {
+    "prepare": "node scripts/prepare-resources.mjs",
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.github.hdwdesign.deepseekharnessgui",
+    "productName": "DeepSeek Harness GUI",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "loading.html",
+      "error.html"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/node",
+        "to": "node"
+      },
+      {
+        "from": "resources/dsh",
+        "to": "dsh"
+      },
+      {
+        "from": "resources/pnpm",
+        "to": "pnpm"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "DeepSeek Harness GUI"
+    },
+    "portable": {
+      "artifactName": "DeepSeekHarnessGUI-portable.exe"
+    }
+  }
+}
