@@ -12,13 +12,16 @@ _diag(`main.js loaded, electron=${process.versions.electron}, execPath=${process
 
 const { app, BrowserWindow, shell, dialog } = require('electron');
 const { spawn, execSync } = require('child_process');
+const net = require('net');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 
-const DSH_PORT = 3080;
-const DSH_URL = `http://127.0.0.1:${DSH_PORT}`;
-const BOOT_TIMEOUT_MS = 60000;
+const DEFAULT_PORT = 3080;
+const BOOT_TIMEOUT_MS = 90000;
+// marker present in the dsh web UI html, used to tell a real dsh server
+// apart from any other program that happens to occupy the port
+const DSH_MARKER = '__DSH_BOOT__';
 
 // In packaged app, runtimes live in process.resourcesPath; in dev, in ./resources
 const RESOURCES = app.isPackaged
@@ -28,6 +31,7 @@ const RESOURCES = app.isPackaged
 const NODE_EXE = path.join(RESOURCES, 'node', 'node.exe');
 const DSH_BIN = path.join(RESOURCES, 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
 const PNPM_DIR = path.join(RESOURCES, 'pnpm');
+const DSH_HOME = path.join(app.getPath('home'), '.dsh');
 
 const logDir = app.getPath('userData');
 fs.mkdirSync(logDir, { recursive: true });
@@ -36,13 +40,54 @@ const logFile = path.join(logDir, 'dsh-server.log');
 let dshProcess = null;
 let mainWindow = null;
 let quitting = false;
+let dshUrl = null;           // resolved base URL of the dsh server
+let stdoutUrl = null;        // URL parsed from dsh stdout ("dsh web: http://...")
+let isFirstRun = false;
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   fs.appendFileSync(logFile, line);
 }
 
-function startDsh() {
+function setStage(text) {
+  _diag(`stage: ${text}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('boot-status', text);
+  }
+}
+
+// Probe whether `url` is served by a real dsh server (marker in the html).
+function probeDsh(url) {
+  return new Promise((resolve) => {
+    const req = http.get(url, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 65536) req.destroy();
+      });
+      res.on('end', () => resolve(res.statusCode >= 200 && res.statusCode < 500 && body.includes(DSH_MARKER)));
+      res.on('error', () => resolve(false));
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(3000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+// TCP-connectable means *something* occupies the port.
+function portInUse(port) {
+  return new Promise((resolve) => {
+    const sock = net.connect(port, '127.0.0.1');
+    sock.once('connect', () => { sock.destroy(); resolve(true); });
+    sock.once('error', () => resolve(false));
+    sock.setTimeout(1500, () => { sock.destroy(); resolve(false); });
+  });
+}
+
+function startDsh(port) {
   if (!fs.existsSync(NODE_EXE)) throw new Error(`node.exe not found: ${NODE_EXE}`);
   if (!fs.existsSync(DSH_BIN)) throw new Error(`dsh bin not found: ${DSH_BIN}`);
 
@@ -52,15 +97,23 @@ function startDsh() {
     // keep dsh data in the standard user profile location (~/.dsh)
   };
 
-  log(`spawning: ${NODE_EXE} ${DSH_BIN} web`);
-  dshProcess = spawn(NODE_EXE, [DSH_BIN, 'web'], {
+  // port 0 = let dsh/OS pick a free port; the actual URL is then taken
+  // from the stdout line "dsh web: http://127.0.0.1:<port>"
+  const args = [DSH_BIN, 'web', '--port', String(port)];
+  log(`spawning: ${NODE_EXE} ${args.join(' ')}`);
+  dshProcess = spawn(NODE_EXE, args, {
     cwd: app.getPath('home'),
     env,
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  dshProcess.stdout.on('data', (d) => log(`[stdout] ${d.toString().trimEnd()}`));
+  dshProcess.stdout.on('data', (d) => {
+    const text = d.toString();
+    log(`[stdout] ${text.trimEnd()}`);
+    const m = text.match(/dsh web: (https?:\/\/\S+)/);
+    if (m) stdoutUrl = m[1].replace(/\/$/, '');
+  });
   dshProcess.stderr.on('data', (d) => log(`[stderr] ${d.toString().trimEnd()}`));
   dshProcess.on('exit', (code, signal) => {
     log(`dsh exited code=${code} signal=${signal}`);
@@ -69,24 +122,14 @@ function startDsh() {
   });
 }
 
-function probeServer() {
-  return new Promise((resolve) => {
-    const req = http.get(DSH_URL, (res) => {
-      res.resume();
-      resolve(res.statusCode >= 200 && res.statusCode < 500);
-    });
-    req.on('error', () => resolve(false));
-    req.setTimeout(2000, () => {
-      req.destroy();
-      resolve(false);
-    });
-  });
-}
-
 async function waitForServer(timeoutMs) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (await probeServer()) return true;
+    const url = stdoutUrl || dshUrl;
+    if (url && await probeDsh(url)) {
+      dshUrl = url;
+      return true;
+    }
     await new Promise((r) => setTimeout(r, 500));
   }
   return false;
@@ -110,6 +153,19 @@ function showError(message) {
   mainWindow.loadFile(errPage, { query: { msg: message, log: logFile } });
 }
 
+function loadUi() {
+  if (!mainWindow) return;
+  setStage('正在加载界面…');
+  if (isFirstRun) {
+    // first boot: brief onboarding (configure API key) before entering the UI
+    mainWindow.loadFile(path.join(__dirname, 'first-run.html'), { query: { url: dshUrl } });
+    _diag('first-run page shown');
+  } else {
+    mainWindow.loadURL(dshUrl);
+    _diag('UI loaded');
+  }
+}
+
 // --- auto update (GitHub Releases, NSIS installs only) ---
 function setupAutoUpdater() {
   if (!app.isPackaged) {
@@ -128,9 +184,10 @@ function setupAutoUpdater() {
     return;
   }
   // Our version tracks the upstream dsh version (e.g. 0.1.0-rc.6), so
-  // prerelease releases must be considered, and the channel is pinned to
-  // "latest" to match the publish.channel in package.json (latest.yml).
-  autoUpdater.channel = 'latest';
+  // prerelease releases must be considered. Do NOT pin autoUpdater.channel:
+  // electron-updater derives the match channel from the app version's
+  // prerelease tag ("rc") and the channel-file name from publish.channel
+  // ("latest" → latest.yml); pinning the channel would break rc-tag matching.
   autoUpdater.allowPrerelease = true;
   autoUpdater.autoDownload = true;
   autoUpdater.logger = {
@@ -188,7 +245,7 @@ async function createWindow() {
 
   // open external links in the system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith(DSH_URL)) shell.openExternal(url);
+    if (!url.startsWith('http://127.0.0.1')) shell.openExternal(url);
     return { action: 'deny' };
   });
 
@@ -201,28 +258,39 @@ async function createWindow() {
   await mainWindow.loadFile(path.join(__dirname, 'loading.html'));
   _diag('loading page shown');
 
-  // If a dsh server is already running on 3080 (e.g. started by a previous
-  // instance or manually via npx), just attach to it.
-  if (await probeServer()) {
-    log('port 3080 already serving, attaching without spawning');
+  isFirstRun = !fs.existsSync(DSH_HOME);
+
+  // 1. already-running dsh on the default port → attach directly
+  setStage('正在检测本地 dsh 服务…');
+  dshUrl = `http://127.0.0.1:${DEFAULT_PORT}`;
+  if (await probeDsh(dshUrl)) {
+    log('default port already served by dsh, attaching without spawning');
     _diag('attaching to existing dsh on 3080');
-    mainWindow.loadURL(DSH_URL);
+    loadUi();
     return;
   }
 
+  // 2. port occupied by something else → let the OS pick a free port
+  let port = DEFAULT_PORT;
+  if (await portInUse(DEFAULT_PORT)) {
+    port = 0;
+    _diag('port 3080 occupied by a non-dsh program, using a dynamic port');
+  }
+
   try {
-    startDsh();
-    _diag('dsh spawned');
+    setStage('正在启动内置 dsh 服务…');
+    startDsh(port);
+    _diag(`dsh spawned (port=${port})`);
   } catch (e) {
     showError(e.message);
     return;
   }
 
+  setStage('等待 dsh 服务就绪…');
   const up = await waitForServer(BOOT_TIMEOUT_MS);
-  _diag(`server up=${up}`);
+  _diag(`server up=${up} url=${dshUrl || stdoutUrl}`);
   if (up && mainWindow) {
-    mainWindow.loadURL(DSH_URL);
-    _diag('UI loaded');
+    loadUi();
   } else if (mainWindow) {
     showError(`dsh 服务在 ${BOOT_TIMEOUT_MS / 1000} 秒内未就绪`);
   }

@@ -12,6 +12,7 @@
   "scripts": {
     "prepare": "node scripts/prepare-resources.mjs",
     "start": "electron .",
+    "predist": "node scripts/verify-resources.mjs",
     "dist": "electron-builder"
   },
   "devDependencies": {
@@ -36,7 +37,8 @@
       "main.js",
       "preload.js",
       "loading.html",
-      "error.html"
+      "error.html",
+      "first-run.html"
     ],
     "extraResources": [
       {
@@ -46,6 +48,10 @@
       {
         "from": "resources/dsh",
         "to": "dsh"
+      },
+      {
+        "from": "resources/dsh/node_modules",
+        "to": "dsh/node_modules"
       },
       {
         "from": "resources/pnpm",

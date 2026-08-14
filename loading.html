@@ -18,11 +18,19 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     h1 { font-size: 20px; font-weight: 500; margin: 0 0 8px; }
     p { color: #8b949e; font-size: 13px; }
+    #stage { color: #58a6ff; }
   </style>
 </head>
 <body>
   <div class="spinner"></div>
   <h1>DeepSeek Harness 正在启动</h1>
-  <p>正在拉起本地 dsh 服务（127.0.0.1:3080），请稍候…</p>
+  <p id="stage">正在初始化…</p>
+  <script>
+    if (window.bootStatus) {
+      window.bootStatus.on((text) => {
+        document.getElementById('stage').textContent = text;
+      });
+    }
+  </script>
 </body>
 </html>
