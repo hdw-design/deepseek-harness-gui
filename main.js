@@ -99,7 +99,9 @@ function startDsh(port) {
 
   // port 0 = let dsh/OS pick a free port; the actual URL is then taken
   // from the stdout line "dsh web: http://127.0.0.1:<port>"
-  const args = [DSH_BIN, 'web', '--port', String(port)];
+  // --no-open: dsh >= 0.1.1 opens the default browser on start; our
+  // Electron window IS the UI, so suppress that.
+  const args = [DSH_BIN, 'web', '--port', String(port), '--no-open'];
   log(`spawning: ${NODE_EXE} ${args.join(' ')}`);
   dshProcess = spawn(NODE_EXE, args, {
     cwd: app.getPath('home'),

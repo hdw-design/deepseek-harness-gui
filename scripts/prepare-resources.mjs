@@ -27,6 +27,7 @@ const RES = path.join(ROOT, 'resources');
 const nodeMirror = (process.env.NODEJS_MIRROR || 'https://nodejs.org/dist/').replace(/\/$/, '');
 const npmRegistry = process.env.NPM_REGISTRY;
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 function download(url, dest) {
   console.log(`downloading ${url}`);
@@ -98,6 +99,12 @@ function pruneNodeModules(dir) {
 }
 
 async function main() {
+  // --prune-only: re-apply the pruning pass to an existing resources/dsh
+  if (process.argv.includes('--prune-only')) {
+    pruneNodeModules(path.join(RES, 'dsh', 'node_modules'));
+    return;
+  }
+
   mkdirSync(RES, { recursive: true });
 
   // 1. standalone node.exe
@@ -122,10 +129,22 @@ async function main() {
   }
 
   // 2. dsh + dependency tree
+  // dsh >= 0.1.1's dependency tree sends npm's peer resolver into
+  // pathological backtracking (hours of 100% CPU), while --legacy-peer-deps
+  // drops required peer deps (e.g. @deepseek-ai/cordis-plugin-group).
+  // pnpm resolves the same tree in seconds; --node-linker=hoisted produces
+  // a flat npm-style node_modules with no symlinks (required for packaging).
   const dshDir = path.join(RES, 'dsh');
   rmSync(dshDir, { recursive: true, force: true });
   mkdirSync(dshDir, { recursive: true });
-  npm(['install', '--prefix', dshDir, '--omit=dev', DSH_PACKAGE], ROOT);
+  writeFileSync(path.join(dshDir, 'package.json'),
+    JSON.stringify({ private: true, dependencies: { [DSH_PACKAGE]: 'latest' } }, null, 2));
+  {
+    const r = spawnSync(npxCmd, ['-y', 'pnpm@10', 'install', '--prod', '--node-linker=hoisted', '--ignore-workspace', ...(npmRegistry ? ['--registry', npmRegistry] : [])], { cwd: dshDir, stdio: 'inherit', shell: process.platform === 'win32' });
+    if (r.status !== 0) throw new Error(`pnpm install for dsh failed with code ${r.status}`);
+  }
+  console.log(`${DSH_PACKAGE} -> resources/dsh/`);
+  pruneNodeModules(path.join(dshDir, 'node_modules'));
   console.log(`${DSH_PACKAGE} -> resources/dsh/`);
   pruneNodeModules(path.join(dshDir, 'node_modules'));
 
