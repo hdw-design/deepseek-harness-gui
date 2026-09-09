@@ -158,10 +158,21 @@ async function main() {
   rmSync(path.join(pnpmDir, 'node_modules'), { recursive: true, force: true });
   rmSync(path.join(pnpmDir, 'package.json'), { force: true });
   rmSync(path.join(pnpmDir, 'package-lock.json'), { force: true });
-  writeFileSync(path.join(pnpmDir, 'pnpm.cmd'),
-    '@echo off\r\n"%~dp0..\\node\\node.exe" "%~dp0pnpm-core\\bin\\pnpm.cjs" %*\r\n');
-  writeFileSync(path.join(pnpmDir, 'pnpm'),
-    '#!/bin/sh\n"$(dirname "$0")/../node/node.exe" "$(dirname "$0")/pnpm-core/bin/pnpm.cjs" "$@"\n');
+  // pnpm >= 10 ships a native Windows binary (pnpm.exe) plus bin/pnpm.mjs.
+  // Prefer the native binary; fallback to node + pnpm.mjs if only that exists.
+  const pnpmExe = path.join(pnpmDir, 'pnpm-core', 'pnpm.exe');
+  const pnpmMjs = path.join(pnpmDir, 'pnpm-core', 'bin', 'pnpm.mjs');
+  if (existsSync(pnpmExe)) {
+    writeFileSync(path.join(pnpmDir, 'pnpm.cmd'),
+      '@echo off\r\n"%~dp0pnpm-core\\pnpm.exe" %*\r\n');
+    writeFileSync(path.join(pnpmDir, 'pnpm'),
+      '#!/bin/sh\n"$(dirname "$0")/pnpm-core/pnpm.exe" "$@"\n');
+  } else {
+    writeFileSync(path.join(pnpmDir, 'pnpm.cmd'),
+      '@echo off\r\n"%~dp0..\\node\\node.exe" "%~dp0pnpm-core\\bin\\pnpm.mjs" %*\r\n');
+    writeFileSync(path.join(pnpmDir, 'pnpm'),
+      '#!/bin/sh\n"$(dirname "$0")/../node/node.exe" "$(dirname "$0")/pnpm-core/bin/pnpm.mjs" "$@"\n');
+  }
   console.log('pnpm -> resources/pnpm/');
 
   console.log('\nresources/ is ready. Next: npm start (dev) or npm run dist (build installers).');

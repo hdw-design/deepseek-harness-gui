@@ -16,12 +16,16 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const REQUIRED = [
   'resources/node/node.exe',
   'resources/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js',
-  'resources/pnpm/pnpm-core/bin/pnpm.cjs',
+  // pnpm >= 10 ships a native binary instead of bin/pnpm.cjs; accept either.
+  ['resources/pnpm/pnpm-core/pnpm.exe', 'resources/pnpm/pnpm-core/bin/pnpm.mjs'],
   'resources/pnpm/pnpm.cmd',
 ];
 
 function missing() {
-  return REQUIRED.filter((p) => !existsSync(path.join(ROOT, p)));
+  return REQUIRED.filter((p) => {
+    const candidates = Array.isArray(p) ? p : [p];
+    return !candidates.some((c) => existsSync(path.join(ROOT, c)));
+  }).map((p) => Array.isArray(p) ? p.join(' or ') : p);
 }
 
 let lack = missing();
