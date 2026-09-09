@@ -138,7 +138,7 @@ async function main() {
   rmSync(dshDir, { recursive: true, force: true });
   mkdirSync(dshDir, { recursive: true });
   writeFileSync(path.join(dshDir, 'package.json'),
-    JSON.stringify({ private: true, dependencies: { [DSH_PACKAGE]: 'latest' } }, null, 2));
+    JSON.stringify({ private: true, dependencies: { [DSH_PACKAGE]: '0.1.5-alpha.1' } }, null, 2));
   {
     const r = spawnSync(npxCmd, ['-y', 'pnpm@10', 'install', '--prod', '--node-linker=hoisted', '--ignore-workspace', ...(npmRegistry ? ['--registry', npmRegistry] : [])], { cwd: dshDir, stdio: 'inherit', shell: process.platform === 'win32' });
     if (r.status !== 0) throw new Error(`pnpm install for dsh failed with code ${r.status}`);

@@ -2,6 +2,11 @@
 
 版本号跟随上游 [`@deepseek-ai/dsh`](https://github.com/deepseek-ai/deepseek-harness/releases)。
 
+## 0.1.5-alpha.1（2026-09-08）
+
+- 内置 `@deepseek-ai/dsh` 由 `0.1.2-rc.1` 升级至 `0.1.5-alpha.1`（alpha 预览版，跟随上游 alpha 通道）
+- 升级后需用 `npm run prepare` 重新拉取 alpha 依赖树，再 `npm run dist` 重新打包
+
 ## 0.1.1-rc.2（2026-08-25）
 
 - 内置 `@deepseek-ai/dsh` 由 `0.1.0-rc.6` 升级至 `0.1.1-rc.2`，覆盖上游 rc.7、rc.8、0.1.1-rc.1、0.1.1-rc.2 四个版本

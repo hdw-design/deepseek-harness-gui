@@ -22,6 +22,9 @@ const BOOT_TIMEOUT_MS = 90000;
 // marker present in the dsh web UI html, used to tell a real dsh server
 // apart from any other program that happens to occupy the port
 const DSH_MARKER = '__DSH_BOOT__';
+// dsh >= 0.1.2-rc.1 requires a token to access the web UI; an unauthenticated
+// request returns 401 with this body. We treat that as "dsh is running" too.
+const DSH_AUTH_MARKER = 'dsh web authentication required';
 
 // In packaged app, runtimes live in process.resourcesPath; in dev, in ./resources
 const RESOURCES = app.isPackaged
@@ -56,7 +59,10 @@ function setStage(text) {
   }
 }
 
-// Probe whether `url` is served by a real dsh server (marker in the html).
+// Probe whether `url` is served by a real dsh server.
+// dsh < 0.1.2-rc.1: returns 200 with __DSH_BOOT__ marker in html.
+// dsh >= 0.1.2-rc.1: returns 401 with an auth-required message unless the
+// one-time token (printed on stdout) is supplied.
 function probeDsh(url) {
   return new Promise((resolve) => {
     const req = http.get(url, (res) => {
@@ -66,7 +72,11 @@ function probeDsh(url) {
         body += chunk;
         if (body.length > 65536) req.destroy();
       });
-      res.on('end', () => resolve(res.statusCode >= 200 && res.statusCode < 500 && body.includes(DSH_MARKER)));
+      res.on('end', () => {
+        const isDsh200 = res.statusCode >= 200 && res.statusCode < 500 && body.includes(DSH_MARKER);
+        const isDsh401 = res.statusCode === 401 && body.includes(DSH_AUTH_MARKER);
+        resolve(isDsh200 || isDsh401);
+      });
       res.on('error', () => resolve(false));
     });
     req.on('error', () => resolve(false));
@@ -127,9 +137,14 @@ function startDsh(port) {
 async function waitForServer(timeoutMs) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const url = stdoutUrl || dshUrl;
-    if (url && await probeDsh(url)) {
-      dshUrl = url;
+    // dsh >= 0.1.2-rc.1 prints a one-time token URL on stdout. Once we have
+    // it we can load it directly; probing it would fail because curl/http.get
+    // does not satisfy the token cookie scheme dsh uses.
+    if (stdoutUrl) {
+      dshUrl = stdoutUrl;
+      return true;
+    }
+    if (dshUrl && await probeDsh(dshUrl)) {
       return true;
     }
     await new Promise((r) => setTimeout(r, 500));
