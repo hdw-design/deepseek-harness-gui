@@ -2,6 +2,24 @@
 
 版本号跟随上游 [`@deepseek-ai/dsh`](https://github.com/deepseek-ai/deepseek-harness/releases)。
 
+## 0.1.5-rc.2（2026-09-11）
+
+- 内置 `@deepseek-ai/dsh` 由 `0.1.5-alpha.1` 升级至 `0.1.5-rc.2`（跟随上游 `next` 通道，覆盖 alpha.2、rc.1、rc.2 三个版本）
+- 注意：npm 的 `latest` 标签仍停留在 `0.1.5-rc.1`，`0.1.5-rc.2` 只发布在 `next` 标签下，因此版本号必须写死为精确版本，不能用 `^` 或 `latest`
+
+上游主要变化（自 0.1.5-alpha.1 起）：
+
+- **通用文件上传**：Web 支持任意类型文件，与图片在同一预览区混排，后台上传带进度与取消，模型可按保存路径读取
+- **右侧 Sidebar**：多标签、分栏、全屏，支持 Markdown、代码高亮、HTML、PDF、图片预览，模型可显式交付文件
+- **模型探测**：支持自定义 provider 的 `models` 对象与 Anthropic 原生模型列表，自动回填模型名、上下文窗口与最大输出
+- **代理支持**：所有出站请求遵循 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY`
+- **顶栏「在应用中打开」**：用已安装的编辑器、IDE、终端或文件管理器打开 Workspace
+- **反馈**：可脱离对话独立提交，`/feedback` 支持明细内容
+- **子代理**：可继续对话的子代理支持消息排队、编辑、删除与 Steer
+- **修复**：Windows 盘符根目录 Workspace、Web 断线后无法自动恢复、发送后聊天不自动滚动、Windows 文件夹选择器被遮挡等
+
+⚠️ 注意：会话数据格式为 V3，升级后的会话不支持降级读取（`0.1.5-alpha.1` 起已是 V3，本次升级不触发迁移）。
+
 ## 0.1.5-alpha.1（2026-09-08）
 
 - 内置 `@deepseek-ai/dsh` 由 `0.1.2-rc.1` 升级至 `0.1.5-alpha.1`（alpha 预览版，跟随上游 alpha 通道）
