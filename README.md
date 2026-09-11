@@ -14,7 +14,9 @@
 - 自动更新：安装版启动时检查 GitHub Releases，发现新版本自动下载，提示重启更新（便携版无此功能）
 - 构建保护：`npm run dist` 前自动校验内嵌运行时完整性（防缺依赖的坏包）
 
-版本号跟随上游 `@deepseek-ai/dsh`（当前 `0.1.1-rc.2`）。
+版本号跟随上游 `@deepseek-ai/dsh`（当前 `0.1.5-rc.2`）。
+
+> 接手本项目开发（含 AI 助手）请先读 [AGENTS.md](AGENTS.md)：版本号双写陷阱、启动/安装耗时的实测归因、NSIS 安装器的硬约束，以及**会导致装机版损坏的操作**。
 
 ## 下载
 
@@ -51,12 +53,14 @@ npm run prepare
 
 版本号始终与上游 `@deepseek-ai/dsh` 保持一致。官方发布新版后：
 
+1. 把 `scripts/prepare-resources.mjs` 里的 `dependencies: { '@deepseek-ai/dsh': '<版本>' }` 改成新版本号 —— **这才是决定拉哪个 dsh 的地方**
+2. 把 `package.json` 的 `version` 改成同一个版本号 —— 它决定安装包文件名、注册表版本和自动更新的版本比对
+3. 两处必须一致；且必须写**精确版本**，不能用 `^` 或 `latest`：npm 的 `latest` tag 可能落后（0.1.5 系列里 `0.1.5-rc.2` 只挂在 `next` tag 下）
+4. 重新组装并打包
+
 ```bash
-# 1. 把 package.json 的 version 改成 dsh 的新版本号（如 0.1.0-rc.7）
-# 2. 拉取新版 dsh 并重新组装 resources/
-npm run prepare
-# 3. 打包
-npm run dist
+npm run prepare              # 重新拉取 dsh 依赖树（会自动剪掉运行时无用文件）
+npm run dist -- --publish never
 ```
 
 然后在 GitHub 上新建 Release（tag 用版本号，如 `0.1.0-rc.7`），上传 `release/` 目录下这些文件：
