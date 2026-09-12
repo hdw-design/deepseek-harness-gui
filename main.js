@@ -97,15 +97,30 @@ function portInUse(port) {
   });
 }
 
+// Build the environment for the dsh child process.
+//
+// Windows environment variable names are case-insensitive, and an app
+// launched by double-clicking inherits the search path under "Path" (not
+// "PATH"). `{...process.env, PATH: ...}` would leave BOTH keys in the
+// spawned environment block, which corrupts it: every console process dsh
+// then launches (cmd.exe, where.exe, ...) fails with 0xc0000142. Normalize
+// to a single PATH key that prepends the bundled runtimes to the inherited
+// value.
+function buildDshEnv() {
+  const env = { ...process.env };
+  const pathKeys = Object.keys(env).filter((k) => k.toLowerCase() === 'path');
+  const inherited = pathKeys.map((k) => env[k]).filter(Boolean).join(';');
+  for (const k of pathKeys) delete env[k];
+  env.PATH = `${path.dirname(NODE_EXE)};${PNPM_DIR}${inherited ? `;${inherited}` : ''}`;
+  return env;
+}
+
 function startDsh(port) {
   if (!fs.existsSync(NODE_EXE)) throw new Error(`node.exe not found: ${NODE_EXE}`);
   if (!fs.existsSync(DSH_BIN)) throw new Error(`dsh bin not found: ${DSH_BIN}`);
 
-  const env = {
-    ...process.env,
-    PATH: `${path.dirname(NODE_EXE)};${PNPM_DIR};${process.env.PATH || ''}`,
-    // keep dsh data in the standard user profile location (~/.dsh)
-  };
+  const env = buildDshEnv();
+  // keep dsh data in the standard user profile location (~/.dsh)
 
   // port 0 = let dsh/OS pick a free port; the actual URL is then taken
   // from the stdout line "dsh web: http://127.0.0.1:<port>"
