@@ -23,6 +23,8 @@
 3. 否则 `spawn(node.exe, [dsh/bin.js, 'web', '--port', '3080', '--no-open'])`，从 stdout 抓 `dsh web: http://127.0.0.1:<port>/?token=...` 这一行（含一次性 token，必须用它加载，否则页面要鉴权）。
 4. 关窗时 `taskkill /PID <pid> /T /F` 清掉整棵进程树（这是产品特性："关闭后无残留进程"）。
 
+**spawn 环境变量的坑（真实事故）**：双击启动的 Electron 从 Explorer 继承的路径键是 `Path`，而 `main.js` 早期写法 `{...process.env, PATH: ...}` 会在子进程环境块里留下 `Path` + `PATH` 两个条目。Windows 变量名不区分大小写，重复键会损坏环境块——后果是 dsh 派生的每个控制台进程（`cmd.exe`、`where.exe`，即 agent 跑工具时）都弹 `0xc0000142`。修复是 `buildDshEnv()`：合并所有大小写变体后只写一个 `PATH`。改这段代码时务必保持单键。
+
 **推论（很重要）**：只要 3080 上已经有 dsh 在跑，新启动的 GUI 就只是"连上去"，用的还是**那个旧内核**。想测试新构建的运行时，必须先关掉正在运行的实例，否则测的是旧的。
 
 ---
