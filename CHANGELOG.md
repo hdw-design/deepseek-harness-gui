@@ -2,6 +2,19 @@
 
 版本号跟随上游 [`@deepseek-ai/dsh`](https://github.com/deepseek-ai/deepseek-harness/releases)。
 
+## 0.1.6-alpha.2（2026-09-18）
+
+- 内置 `@deepseek-ai/dsh` 由 `0.1.5-rc.2` 升级至 `0.1.6-alpha.2`（上游 alpha 通道，09-17 发布）
+- **修复送达**：主程序注入 PATH 环境变量时的键名重复修复（`fa3e09c`）随本版首次发布——Explorer 启动的应用继承的是 `Path` 而代码写的是 `PATH`，两个键并存会损坏子进程环境块，导致 dsh 派生的控制台进程（cmd.exe / where.exe 等）报 `0xc0000142`。该修复此前因版本号未抬升无法触达用户
+
+上游主要变化（自 0.1.5-rc.2 起）：
+
+- **插件管理页**：可安装、配置、实时启停插件
+- **文件改动卡片**：回合结束显示改动摘要，侧栏可逐文件审阅
+- **侧栏增强**：Office（Word/Excel/PPT）预览、浏览器模式访问 URL、打开 Subagent 会话、工作区按目录层级分组
+- **性能**：改善 CLI 与 Web 启动等候时间
+- **破坏性变更**：PTC 包名统一为 `ptc-runtime`（旧名不兼容）；`agent/session-start` 改名 `agent/created`；移除内置 E2B；默认模型列表移除 V4 Flash 与 V4 Flash Vision Exp；工作流执行器改为 `workflow-ptc`；插件依赖改为运行时解析。使用自定义插件或配置的请对照上游说明调整
+
 ## 0.1.5-rc.2（2026-09-11）
 
 - 内置 `@deepseek-ai/dsh` 由 `0.1.5-alpha.1` 升级至 `0.1.5-rc.2`（跟随上游 `next` 通道，覆盖 alpha.2、rc.1、rc.2 三个版本）
