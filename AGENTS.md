@@ -37,22 +37,29 @@
 
 | 文件 | 位置 | 作用 |
 |---|---|---|
-| `scripts/prepare-resources.mjs` | `dependencies: { [DSH_PACKAGE]: '0.1.5-rc.2' }` | **真正决定装哪个 dsh**，重打包时按这个版本重新拉依赖树 |
-| `package.json` | `"version": "0.1.5-rc.2"` | 决定安装包文件名、注册表 DisplayVersion、electron-updater 的版本比对 |
+| `scripts/prepare-resources.mjs` | `dependencies: { [DSH_PACKAGE]: '<版本>' }`（约 L141） | **真正决定装哪个 dsh**，重打包时按这个版本重新拉依赖树 |
+| `package.json` | `"version": "<版本>"`（L3） | 决定安装包文件名、注册表 DisplayVersion、electron-updater 的版本比对 |
 
-只改后者 → 内置还是旧 dsh；只改前者 → 安装包版本号不变，老用户永远收不到更新（electron-updater 按版本号判断）。
+当前两处都是 `0.2.0-rc.1`。只改后者 → 内置还是旧 dsh；只改前者 → 安装包版本号不变，老用户永远收不到更新（electron-updater 按版本号判断）。
 
 ### 2.2 npm tag 陷阱
 
-`@deepseek-ai/dsh` 的 dist-tags（2026-09-11）：
+`@deepseek-ai/dsh` 的 dist-tags（2026-09-29 实测）：
 
 ```
-latest = 0.1.5-rc.1     ← npm install 默认拿到的
-next   = 0.1.5-rc.2     ← 真正的更新在这里
-alpha  = 0.1.5-alpha.2
+latest = 0.1.7-rc.2     ← npm install 默认拿到的
+next   = 0.2.0-rc.1     ← 更新的版本常常挂在这里，不在 latest
+alpha  = 0.1.7-alpha.2
 ```
 
 **必须写死精确版本**，不能用 `^` 或 `latest`，否则永远落后一个版本。
+
+**注意 `latest` 与 `next` 会分叉**：本项目当前跟随 `next`（`0.2.0-rc.1`，用户明确要"最新版"）。下次升级前先查一遍真实 dist-tags 再决定跟哪条通道：
+
+```powershell
+(Invoke-WebRequest 'https://registry.npmjs.org/@deepseek-ai/dsh' -UseBasicParsing).Content |
+  ConvertFrom-Json | Select-Object -ExpandProperty 'dist-tags'
+```
 
 ### 2.3 发版流程
 
@@ -62,7 +69,7 @@ alpha  = 0.1.5-alpha.2
 npm run prepare
 # 3. 打包（--publish never 防止误发到 GitHub）
 npm run dist -- --publish never
-# 4. 提交 + 打 tag（tag 名不带 v，例如 0.1.5-rc.2，与历史一致）
+# 4. 提交 + 打 tag（tag 名不带 v，例如 0.2.0-rc.1，与历史一致）
 git add -A ; git commit ; git tag -a <version> -m "..."
 # 5. push + 建 Release，见 §2.4
 ```
@@ -237,10 +244,25 @@ Get-ChildItem "$env:USERPROFILE\.dsh\profiles" -Recurse -Force -Directory |
 
 ## 8. 数据目录与兼容性
 
-- 数据全在 `~/.dsh`（`sessions/`、`profiles/`、`settings.yaml`、`.credentials.yaml`），**与命令行版完全共享**。
-- 会话格式：`0.1.5-alpha.1` 起是 **V3**，升级后的会话**不支持降级读取**。从更早的版本（≤0.1.2-rc.1）升级会触发不可逆迁移，回退前要先备份。
+- 数据全在 `~/.dsh`（`sessions/`、`storages/`、`profiles/`、`.credentials.yaml`），**与命令行版完全共享**。
+- 会话格式：`0.1.5-alpha.1` 起是 **V3**，升级后的会话**不支持降级读取**。从更早的版本（≤0.1.2-rc.1）升级会触发不可逆迁移，回退前要先备份（备份清单与正确做法见 HANDOFF.md §6）。
 - `~/.dsh/profiles/web` 是 profile 目录，`~/.dsh/profiles/node_modules` 是指向当前安装的 junction 场（见 §6）。
 - 同一 session 同时只能被一个进程持有（dsh 的 session 锁）。别让两个实例同时操作同一个会话。
+
+### 8.1 `settings.yaml` 迁移（`0.2.0-rc.1` 起）
+
+`0.1.6` → `0.2.0` 之间 dsh 改了配置存储机制：
+
+| 升级前 | 升级后 |
+|---|---|
+| `~/.dsh/settings.yaml` | 被重命名为 **`settings.yaml.imported`**（内容保留） |
+| — | 新增 **`~/.dsh/storages/`**（workspace.json、session_projcache/ 等） |
+
+**看到 `settings.yaml` 不见时不要当 bug 修，也不要用备份里的旧文件覆盖回去** —— 先 `Get-Content "$env:USERPROFILE\.dsh\settings.yaml.imported"` 确认内容完整即可。`storages\session_projcache\` 是新的会话缓存层，同样别当垃圾清理。
+
+### 8.2 与官方桌面端共存
+
+官方桌面端（`download.deepseek.com/dsh-desk/`，**需实名 + 余额**）与本封装**共享同一个 `~/.dsh`**，且都用 **3080** 端口。两者混用的后果：后启动的会"附着"到先启动的那个；608 个 profile junction 会被反复重指；若两版内置 dsh 版本不同，同一会话被轮流读会有迁移风险。**建议别在同一台机器上混用**；要混用就给其中一方设独立 `DSH_HOME` 或改 `main.js` 里的 `DEFAULT_PORT`。
 
 ---
 
@@ -262,24 +284,30 @@ Get-ChildItem "$env:USERPROFILE\.dsh\profiles" -Recurse -Force -Directory |
 
 ## 10. 其它约定
 
-- **提交信息用英文**，风格参考历史：`Sync upstream dsh 0.1.5-rc.2`、`Fix duplicate desktop shortcuts on update: ...`。
-- 版本号跟随上游，tag 名**不带 `v`**（`0.1.5-rc.2`）。未 push 前可以 `git tag -f` 移动到包含全部改动的最新提交。
+- **提交信息用英文**，风格参考历史：`Sync upstream dsh 0.2.0-rc.1`、`Fix duplicate desktop shortcuts on update: ...`。
+- 版本号跟随上游，tag 名**不带 `v`**（`0.2.0-rc.1`）。未 push 前可以 `git tag -f` 移动到包含全部改动的最新提交。
 - `release/`、`resources/`、`node_modules/` 都在 `.gitignore` 里——**不要提交构建产物**。
 - 改完 `main.js` / `installer.nsh` / 打包脚本后，必须重新构建并**至少**跑 §3.1 的校验；涉及启动路径的改动再跑 §3.2。
 - 不要在用户机器上做"先卸载再装"的破坏性验证；也不要在 GUI 正在运行时去覆盖它（那个进程很可能正托管着用户的会话界面）。
 
 ---
 
-## 11. 当前状态（2026-09-18）
+## 11. 当前状态（2026-09-29）
 
-> **要动手做下一次升级，直接看 [HANDOFF.md](HANDOFF.md)** —— 那里有"现在是什么状态 + 照抄即可的步骤 + 验证清单 + Release 说明模板"。本节只留摘要。
+> **要动手做下一次升级，直接看 [HANDOFF.md](HANDOFF.md)** —— 那里有"现在是什么状态 + 照抄即可的步骤 + 验证清单 + Release 说明模板 + 待办"。本节只留摘要。
 
-- 已发布（GitHub Release）：`0.1.5-rc.2`，2026-09-11。四个附件 digest 已核对，`latest.yml` 已被客户端拉取 16 次 → **自动更新链路可用**
-- 本机已安装：`0.1.5-rc.2`（09-11 的构建，**不含** `fa3e09c` 的 PATH 修复）
-- 本地 `release/` 里另有一次 09-12 构建（含 PATH 修复），但顶着同一个版本号，**发不出去**
-- 上游最新：`0.1.6-alpha.2`（2026-09-17）；npm dist-tags：`latest=next=0.1.5-rc.2`、`alpha=0.1.6-alpha.2`
+- 已发布（GitHub Release）：**`0.2.0-rc.1`**，2026-09-29。四个附件齐全（Setup 330183491 / blockmap 250292 / portable 329948356 / latest.yml 384）→ **自动更新链路已接通**，此前"Release 缺 `latest.yml`"的老问题已解决
+- 本机已安装：**`0.2.0-rc.1`**（2026-09-29），装机后已验证版本号、内置 dsh、网页 200 + `__DSH_BOOT__`、401 鉴权、608 个 junction 指向正确、会话与 API Key 完整
+- 源码：远端 `main` = `da5610d`（tag `0.2.0-rc.1`），`git status` 干净
+- 上游：`next=0.2.0-rc.1`、`latest=0.1.7-rc.2`、`alpha=0.1.7-alpha.2`（**`latest` 与 `next` 已分叉**，本项目跟 `next`）
 - **待办**：
-  1. 升到 `0.1.6-alpha.2` 并发布 —— 这同时是**唯一**能把 `fa3e09c`（PATH env-key → `0xc0000142`）送到用户手里的方式；用同一个版本号重发谁都收不到（原理见 HANDOFF.md §3）
+  1. **pnpm 体积瘦身**（唯一实质待办）—— `resources\pnpm` 400 MB 里约 396 MB 是 `pnpm`/`pn`/`pnx`/`pnpx` × 8 个各 49.5 MB 的重复二进制。删冗余命令后安装包可从 **314.89 MB 降到约 80 MB**。改法与验证要求见 HANDOFF.md §7（**必须实测插件安装**才算验证过）
   2. 目视确认安装向导里确实出现「启动加速」页（机制上已验证宏在页面注册点展开；二进制搜索因 NSIS 压缩无法作为证据）
   3. `${isUpdated}` 保护在真实更新流程里的实测（见 §7 未验证项）
   4. 本机 git 必须走本地代理（`127.0.0.1:10808`），直连 github.com 不通
+
+### 11.1 环境快照（2026-09-29）
+
+Windows 11 Pro 25H2 (26200) / i9-13900K / RTX 4080 16GB / 64GB RAM / PowerShell 5.1（无 `pwsh`）/ Node v24.14.0 / npm 11.9.0 / `npm run prepare` 内部走 `npx -y pnpm@10`（实测 10.30.2）。
+
+**清理 node 进程时用精确 PID**：实测曾用 `-match 'smoke'` 宽泛匹配去 kill 测试进程，误杀了打包任务自身（报 `subprocess-local: Windows Job runner exited with exit code 4294967295`）。先打印 `ProcessId,CommandLine` 确认，再按 PID kill。
